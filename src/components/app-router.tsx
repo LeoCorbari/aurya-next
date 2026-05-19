@@ -73,8 +73,8 @@ export function AppRouter() {
         zIndex: 200,
       }} />
 
-      {/* Safe area overlays — apenas no catálogo */}
-      {view === 'catalog' && (['top', 'bottom'] as const).map(pos => (
+      {/* Safe area overlays */}
+      {(['top', 'bottom'] as const).map(pos => (
         <div key={pos} style={{
           position: 'fixed',
           top: pos === 'top' ? 0 : 'auto',
@@ -85,7 +85,10 @@ export function AppRouter() {
             : 'env(safe-area-inset-bottom, 0px)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
-          background: 'rgba(10,11,14,0.5)',
+          background: view === 'catalog'
+            ? 'rgba(10,11,14,0.5)'
+            : 'rgba(233,232,227,0.5)',
+          transition: 'background .4s ease',
           zIndex: 9998,
           pointerEvents: 'none',
         } as React.CSSProperties} />
