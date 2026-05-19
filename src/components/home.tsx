@@ -148,7 +148,7 @@ function SobreSection() {
     <section id="sobre" data-screen-label="02 Sobre" ref={sectionRef}
       className="relative overflow-hidden">
 
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 50%, var(--bg-0) 100%)' }} />
+      <div className="absolute inset-0" style={{ background: 'var(--bg-1)' }} />
 
       {/* Mobile: imagem full-bleed com parallax lento */}
       <div className="relative block lg:hidden w-full overflow-hidden"
@@ -279,7 +279,7 @@ function NewsletterSection() {
     <section id="newsletter" data-screen-label="03 Newsletter" ref={sectionRef}
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
       style={{ padding: 'clamp(80px, 10vh, 140px) clamp(20px, 5vw, 32px)',
-               background: 'linear-gradient(180deg, var(--bg-0) 0%, #dedcd6 50%, var(--bg-0) 100%)' }}>
+               background: 'radial-gradient(ellipse at 50% 45%, #e3e2db 0%, var(--bg-0) 75%)' }}>
 
       <div ref={topWaveRef} className="absolute pointer-events-none" style={{ top: '8%', left: '-10%', right: '-10%' }}>
         <SparkleWave width={1600} height={240} density={360} seed={11} />
