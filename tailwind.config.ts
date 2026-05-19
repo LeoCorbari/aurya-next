@@ -9,10 +9,18 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        'bg-0':  '#e9e8e3',
+        'bg-1':  '#ecebe6',
+        'bg-2':  '#d8d7d2',
+        'ink-0': '#2b2e34',
+        'ink-1': '#4a4f58',
+        'ink-2': '#7a7e85',
+        'ink-3': '#b3b5b8',
+        'stage': '#0a0b0d',
       },
-    },
+      screens: { xs: '480px' },
+      spacing: { '18': '4.5rem' },
+    }
   },
   plugins: [],
 };
