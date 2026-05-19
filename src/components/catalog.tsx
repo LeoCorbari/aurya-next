@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { animate } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import useEmblaCarousel from 'embla-carousel-react';
 import gsap from 'gsap';
 import { supabase } from '@/lib/supabase';
 import { JewelryPlaceholder } from './shared';
@@ -151,226 +151,161 @@ interface Cylinder3DProps {
 }
 
 function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps) {
-  const stageRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-  const angleRef = useRef(0);
-  const velocityRef = useRef(0);
-  const draggingRef = useRef(false);
-  const lastXRef = useRef(0);
-  const lastTRef = useRef(0);
-  const rafRef = useRef(0);
-  const fmRef = useRef<{ stop?: () => void } | null>(null);
-  const isFMRef = useRef(false);
-  const onSelectRef = useRef(onSelect);
-  const activeIdxRef = useRef(0);
+  const N = pieces.length;
+  const baseRadius = (tweaks?.radius) ?? 720;
+  const radius = N <= 1 ? baseRadius : Math.max(Math.round(baseRadius * N / PIECES.length), 220);
+
   const [activeIdx, setActiveIdx] = useState(0);
+  const activeIdxRef = useRef(0);
+  const onSelectRef = useRef(onSelect);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const rafRef = useRef(0);
 
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
 
-  const N = pieces.length;
-  const step = (Math.PI * 2) / N;
-  const baseRadius = (tweaks?.radius) ?? 720;
-  const radius = N <= 1 ? baseRadius : Math.max(Math.round(baseRadius * N / PIECES.length), 220);
-  const sensitivity = ((tweaks?.sensitivity) ?? 42) * 0.0001;
+  // Embla: loop:true + dragFree:false so it snaps per slide
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
+    axis: 'x',
+    dragFree: false,
+    align: 'center',
+    skipSnaps: false,
+    containScroll: false,
+  });
 
-  const stopFM = () => {
-    fmRef.current?.stop?.();
-    fmRef.current = null;
-    isFMRef.current = false;
-  };
+  // Apply 3D transforms based on Embla's scroll progress
+  const applyTransforms = useCallback(() => {
+    if (!emblaApi) return;
 
-  const snapTarget = (angle: number, vel: number) => {
-    const projected = angle + vel * 14;
-    return -Math.round(-projected / step) * step;
-  };
+    // scrollSnapList() returns values in [0,1] range for each snap point
+    const snapList = emblaApi.scrollSnapList();
+    const currentProgress = emblaApi.scrollProgress();
 
-  const springTo = (target: number, velHint = 0) => {
-    stopFM();
-    isFMRef.current = true;
-    const from = angleRef.current;
-    const controls = animate(from, target, {
-      type: 'spring',
-      stiffness: 220,
-      damping: 28,
-      mass: 0.85,
-      velocity: velHint * 60,
-      restDelta: 0.0003,
-      onUpdate: (v: number) => { angleRef.current = v; },
-      onComplete: () => {
-        isFMRef.current = false;
-        fmRef.current = null;
-      },
+    let closestAngle = Infinity;
+    let closestIdx = 0;
+
+    cardRefs.current.forEach((el, i) => {
+      if (!el) return;
+
+      const slideSnapProgress = snapList[i] ?? (i / N);
+
+      // Compute delta in progress units, then wrap to [-0.5, 0.5] for looping
+      let delta = slideSnapProgress - currentProgress;
+      if (delta > 0.5) delta -= 1;
+      if (delta < -0.5) delta += 1;
+
+      // Convert progress delta to cylinder angle: full revolution = 2π across all cards
+      const angle = delta * (Math.PI * 2);
+
+      el.style.transform = `rotateY(${angle}rad) translateZ(${radius}px)`;
+
+      const cos = Math.cos(angle);
+      if (cos < -0.05) {
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+      } else {
+        const o = Math.max(0, Math.min(1, 0.55 + cos * 0.45));
+        el.style.opacity = String(o);
+        el.style.pointerEvents = cos > 0.85 ? 'auto' : 'none';
+      }
+
+      const absAngle = Math.abs(angle);
+      if (absAngle < closestAngle) {
+        closestAngle = absAngle;
+        closestIdx = i;
+      }
     });
-    fmRef.current = controls;
-  };
 
-  /* RAF loop */
+    if (closestIdx !== activeIdxRef.current) {
+      activeIdxRef.current = closestIdx;
+      setActiveIdx(closestIdx);
+    }
+  }, [emblaApi, N, radius]);
+
+  // RAF loop to keep transforms smooth during inertia/spring
   useEffect(() => {
-    let lastFrame = performance.now();
-    const tick = (t: number) => {
-      const dt = Math.min(64, t - lastFrame);
-      lastFrame = t;
+    if (!emblaApi) return;
 
-      if (draggingRef.current) {
-        // live drag — angle already updated in onMove
-      } else if (!isFMRef.current) {
-        velocityRef.current *= Math.pow(0.92, dt / 16.67);
-        if (Math.abs(velocityRef.current) > 0.0002) {
-          angleRef.current += velocityRef.current * (dt / 16.67);
-        } else if (velocityRef.current !== 0) {
-          velocityRef.current = 0;
-          springTo(snapTarget(angleRef.current, 0));
-        }
-      }
-
-      const norm = ((angleRef.current % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      const realIdx = (((Math.round(-norm / step)) % N) + N) % N;
-      activeIdxRef.current = realIdx;
-      setActiveIdx(realIdx);
-
-      if (innerRef.current) {
-        innerRef.current.style.transform = `translateZ(-${radius}px) rotateY(${angleRef.current}rad)`;
-        const kids = innerRef.current.children;
-        for (let i = 0; i < kids.length; i++) {
-          const cos = Math.cos(angleRef.current + i * step);
-          const k = kids[i] as HTMLElement;
-          if (cos < -0.05) {
-            k.style.opacity = '0';
-            k.style.pointerEvents = 'none';
-          } else {
-            const o = Math.max(0, Math.min(1, 0.55 + cos * 0.45));
-            k.style.opacity = String(o);
-            k.style.pointerEvents = cos > 0.85 ? 'auto' : 'none';
-          }
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
+    const loop = () => {
+      applyTransforms();
+      rafRef.current = requestAnimationFrame(loop);
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(rafRef.current); stopFM(); };
-  }, [N, radius, step]);
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [emblaApi, applyTransforms]);
 
-  /* Pointer drag */
+  // Keyboard navigation
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    let downX = 0, downY = 0, downTarget: EventTarget | null = null, isTouch = false;
-
-    const onDown = (e: PointerEvent) => {
-      stopFM();
-      draggingRef.current = true;
-      isTouch = e.pointerType === 'touch';
-      lastXRef.current = e.clientX;
-      lastTRef.current = performance.now();
-      downX = e.clientX; downY = e.clientY; downTarget = e.target;
-      velocityRef.current = 0;
-      stage.setPointerCapture(e.pointerId);
-      stage.style.cursor = 'grabbing';
-    };
-
-    const onMove = (e: PointerEvent) => {
-      if (!draggingRef.current) return;
-      const dx = e.clientX - lastXRef.current;
-      const now = performance.now();
-      const dt = Math.max(1, now - lastTRef.current);
-      const effectiveSensitivity = isTouch ? (step / 330) : sensitivity;
-      const delta = dx * effectiveSensitivity;
-      angleRef.current += delta;
-      velocityRef.current = (delta / dt) * 16.67 * (isTouch ? 0.4 : 0.9);
-      lastXRef.current = e.clientX;
-      lastTRef.current = now;
-    };
-
-    const onUp = (e: PointerEvent) => {
-      draggingRef.current = false;
-      stage.style.cursor = 'grab';
-      try { stage.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-
-      const totalDx = Math.abs(e.clientX - downX);
-      const totalDy = Math.abs(e.clientY - downY);
-      if (totalDx < 10 && totalDy < 10) {
-        const clickedCard = downTarget && (downTarget as HTMLElement).closest('[data-cyl-card]');
-        if (clickedCard && onSelectRef.current) onSelectRef.current(pieces[activeIdxRef.current]);
-        return;
-      }
-
-      const vel = velocityRef.current;
-      velocityRef.current = 0;
-      springTo(snapTarget(angleRef.current, vel), vel);
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        stopFM();
-        angleRef.current += e.deltaX * 0.0025;
-        velocityRef.current = e.deltaX * 0.0025 * 0.6;
-      }
-    };
-
-    stage.addEventListener('pointerdown', onDown);
-    stage.addEventListener('pointermove', onMove);
-    stage.addEventListener('pointerup', onUp);
-    stage.addEventListener('pointercancel', onUp);
-    stage.addEventListener('wheel', onWheel, { passive: false });
-
-    return () => {
-      stage.removeEventListener('pointerdown', onDown);
-      stage.removeEventListener('pointermove', onMove);
-      stage.removeEventListener('pointerup', onUp);
-      stage.removeEventListener('pointercancel', onUp);
-      stage.removeEventListener('wheel', onWheel);
-    };
-  }, [sensitivity, pieces]);
-
-  /* Keyboard: ←/→ spring to neighbor card */
-  useEffect(() => {
+    if (!emblaApi) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const norm = ((angleRef.current % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      const cur = (((Math.round(-norm / step)) % N) + N) % N;
-      const next = e.key === 'ArrowLeft' ? (cur - 1 + N) % N : (cur + 1) % N;
-      springTo(-next * step);
+      if (e.key === 'ArrowLeft') emblaApi.scrollPrev();
+      else if (e.key === 'ArrowRight') emblaApi.scrollNext();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [N, step]);
+  }, [emblaApi]);
+
+  // Click on active card opens modal
+  const handleCardClick = useCallback((idx: number) => {
+    if (idx === activeIdxRef.current) {
+      onSelectRef.current(pieces[idx]);
+    } else {
+      // Clicking a non-active card scrolls to it
+      emblaApi?.scrollTo(idx);
+    }
+  }, [emblaApi, pieces]);
 
   return (
-    <div ref={stageRef} style={{
+    /* Perspective container — Embla's viewport sits here */
+    <div style={{
       position: 'absolute', inset: 0,
       perspective: '1400px',
       perspectiveOrigin: '50% 50%',
-      cursor: 'grab',
-      touchAction: 'none',
-      userSelect: 'none',
       animation: 'fadeIn .45s ease .08s both',
     }}>
-      <div ref={innerRef} style={{
-        position: 'absolute',
-        left: '50%', top: `calc(50% + ${topOffset}px)`,
-        width: 0, height: 0,
-        transformStyle: 'preserve-3d',
-        willChange: 'transform',
+      {/* Embla viewport — invisible, full stage, handles drag/touch */}
+      <div ref={emblaRef} style={{
+        position: 'absolute', inset: 0,
+        overflow: 'hidden',
+        cursor: 'grab',
+        touchAction: 'pan-y',
+        userSelect: 'none',
       }}>
-        {pieces.map((p, i) => {
-          const a = i * step;
-          return (
-            <div key={p.id}
-              data-cyl-card="1"
-              data-idx={i}
-              style={{
-              position: 'absolute',
-              left: -130, top: -210,
-              width: 260, height: 420,
-              transform: `rotateY(${a}rad) translateZ(${radius}px)`,
-              transformStyle: 'preserve-3d',
-              backfaceVisibility: 'hidden',
-            }}>
-              <CylinderCard piece={p} index={i} active={activeIdx === i} />
+        {/* Embla container — must be a flat flex row */}
+        <div style={{
+          display: 'flex',
+          /* Make each slide take zero visual space; 3D positioning handles layout */
+          gap: 0,
+        }}>
+          {pieces.map((p, i) => (
+            /* Each Embla slide: zero-width so Embla still tracks scroll positions,
+               but the actual card is 3D-positioned via the inner ref */
+            <div key={p.id} style={{ flex: '0 0 0px', minWidth: 0 }}>
+              {/* 3D card wrapper — positioned relative to the cylinder center */}
+              <div
+                ref={(el) => { cardRefs.current[i] = el; }}
+                data-cyl-card="1"
+                data-idx={i}
+                onClick={() => handleCardClick(i)}
+                style={{
+                  position: 'fixed',
+                  left: '50%',
+                  top: `calc(50% + ${topOffset}px)`,
+                  marginLeft: -130,
+                  marginTop: -210,
+                  width: 260,
+                  height: 420,
+                  transformStyle: 'preserve-3d',
+                  backfaceVisibility: 'hidden',
+                  willChange: 'transform, opacity',
+                  cursor: 'pointer',
+                }}
+              >
+                <CylinderCard piece={p} index={i} active={activeIdx === i} />
+              </div>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );
