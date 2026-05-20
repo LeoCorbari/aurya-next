@@ -1,5 +1,35 @@
 import type { Metadata, Viewport } from "next";
+import { Cinzel, Cormorant_Garamond, Inter, Pinyon_Script } from "next/font/google";
 import "./globals.css";
+
+const cinzel = Cinzel({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-cinzel",
+  display: "swap",
+});
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-cormorant",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const pinyonScript = Pinyon_Script({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-pinyon",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Joias Aurya — Valquíria Wisniewski Konzen",
@@ -19,15 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500;600&family=Pinyon+Script&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="pt-BR" className={`${cinzel.variable} ${cormorant.variable} ${inter.variable} ${pinyonScript.variable}`}>
       <body>{children}</body>
     </html>
   );

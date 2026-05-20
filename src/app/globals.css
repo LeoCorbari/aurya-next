@@ -23,7 +23,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: var(--bg-0); color: var(--ink-0); height: 100%; }
 body {
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-cormorant), Georgia, serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -31,13 +31,13 @@ body {
 }
 
 /* universal type helpers */
-.ff-display { font-family: 'Cinzel', 'Cormorant Garamond', serif; }
-.ff-serif   { font-family: 'Cormorant Garamond', Georgia, serif; }
-.ff-sans    { font-family: 'Inter', system-ui, sans-serif; }
-.ff-script  { font-family: 'Pinyon Script', cursive; }
+.ff-display { font-family: var(--font-cinzel), serif; }
+.ff-serif   { font-family: var(--font-cormorant), Georgia, serif; }
+.ff-sans    { font-family: var(--font-inter), system-ui, sans-serif; }
+.ff-script  { font-family: var(--font-pinyon), cursive; }
 
 .label {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), sans-serif;
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.32em;
@@ -104,7 +104,7 @@ body.detail-open .top-nav { opacity: 0; pointer-events: none; transition: opacit
   transition: color .4s ease;
 }
 .top-nav__brand {
-  font-family: 'Cinzel', serif;
+  font-family: var(--font-cinzel), serif;
   font-weight: 500;
   font-size: 13px;
   letter-spacing: 0.42em;
@@ -122,7 +122,7 @@ body.detail-open .top-nav { opacity: 0; pointer-events: none; transition: opacit
   display: flex; gap: 28px;
 }
 .top-nav__item {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), sans-serif;
   font-size: 11px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
@@ -165,7 +165,7 @@ body.dark-stage .top-nav__brand {
   background: transparent;
   border: 1px solid var(--ink-1);
   color: var(--ink-0);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), sans-serif;
   font-size: 11px;
   letter-spacing: 0.36em;
   text-transform: uppercase;
@@ -216,3 +216,20 @@ body.dark-stage .top-nav__brand {
 
 /* scrollbar hidden but functional */
 ::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Overlay detail modal — mobile layout */
+@media (max-width: 767px) {
+  .overlay-card {
+    grid-template-rows: 240px 1fr;
+    max-height: 92dvh !important;
+    overflow: hidden !important;
+  }
+  .overlay-card__info {
+    overflow-y: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    justify-content: flex-start !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+  }
+  .overlay-card__info::-webkit-scrollbar { display: none; }
+}

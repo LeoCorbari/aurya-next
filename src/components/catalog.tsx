@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { animate } from 'framer-motion';
 import gsap from 'gsap';
-import { supabase } from '@/lib/supabase';
+import { fetchCatalogData } from '@/lib/catalog-cache';
 import { JewelryPlaceholder } from './shared';
 
 /* ===================== Static fallback data ===================== */
@@ -90,10 +91,10 @@ function CylinderCard({ piece, index, active }: CylinderCardProps) {
     }}>
       <div style={{ flex: '1 1 auto', position: 'relative', margin: 14, marginBottom: 0, overflow: 'hidden' }}>
         {piece.image_url
-          ? <img src={piece.image_url} alt={piece.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }} />
+          ? <Image src={piece.image_url} alt={piece.name} fill sizes="260px" loading={active ? 'eager' : 'lazy'} style={{ objectFit: 'cover', objectPosition: 'center' }} />
           : <JewelryPlaceholder piece={piece} depth={active ? 1 : 0.78} />
         }
-        {piece.video_url && (
+        {piece.video_url && active && (
           <video ref={videoRef} src={piece.video_url} muted loop playsInline
             style={{
               position: 'absolute', inset: 0,
@@ -113,7 +114,7 @@ function CylinderCard({ piece, index, active }: CylinderCardProps) {
         borderTop: '1px solid rgba(232,233,235,.08)',
       }}>
         <div style={{
-          fontFamily: 'Inter, sans-serif', fontSize: 9, letterSpacing: '0.32em',
+          fontFamily: 'var(--font-inter), sans-serif', fontSize: 9, letterSpacing: '0.32em',
           textTransform: 'uppercase', color: 'rgba(232,233,235,.5)', marginBottom: 6,
         }}>
           {piece.category} · Nº {String(index + 1).padStart(2, '0')}
@@ -132,7 +133,7 @@ function CylinderCard({ piece, index, active }: CylinderCardProps) {
         }}>
           <span className="ff-display" style={{ fontSize: 14, color: '#e8e9eb', letterSpacing: '0.04em' }}>{piece.price}</span>
           <span style={{
-            fontFamily: 'Inter, sans-serif', fontSize: 9, letterSpacing: '0.28em',
+            fontFamily: 'var(--font-inter), sans-serif', fontSize: 9, letterSpacing: '0.28em',
             textTransform: 'uppercase', color: active ? '#fff' : 'rgba(232,233,235,.45)',
             transition: 'color .3s ease',
           }}>Detalhes →</span>
@@ -148,9 +149,10 @@ interface Cylinder3DProps {
   onSelect: (piece: PieceData) => void;
   tweaks?: TweakValues;
   topOffset?: number;
+  filterKey?: string;
 }
 
-function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps) {
+function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cylinder3DProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const angleRef = useRef(0);
@@ -161,11 +163,23 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
   const rafRef = useRef(0);
   const fmRef = useRef<{ stop?: () => void } | null>(null);
   const isFMRef = useRef(false);
+  const isIdleRef = useRef(false);
+  const wakeRafRef = useRef<(() => void) | null>(null);
   const onSelectRef = useRef(onSelect);
   const activeIdxRef = useRef(0);
   const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+
+  useEffect(() => {
+    angleRef.current = 0;
+    velocityRef.current = 0;
+    stopFM();
+    activeIdxRef.current = 0;
+    setActiveIdx(0);
+    wakeRafRef.current?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey]);
 
   const N = pieces.length;
   const step = (Math.PI * 2) / N;
@@ -186,6 +200,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
 
   const springTo = (target: number, velHint = 0) => {
     stopFM();
+    wakeRafRef.current?.();
     isFMRef.current = true;
     const from = angleRef.current;
     const controls = animate(from, target, {
@@ -225,8 +240,10 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
 
       const norm = ((angleRef.current % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       const realIdx = (((Math.round(-norm / step)) % N) + N) % N;
-      activeIdxRef.current = realIdx;
-      setActiveIdx(realIdx);
+      if (realIdx !== activeIdxRef.current) {
+        activeIdxRef.current = realIdx;
+        setActiveIdx(realIdx);
+      }
 
       if (innerRef.current) {
         innerRef.current.style.transform = `translateZ(-${radius}px) rotateY(${angleRef.current}rad)`;
@@ -244,10 +261,24 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
           }
         }
       }
+
+      const idle = !draggingRef.current && !isFMRef.current && Math.abs(velocityRef.current) <= 0.0002;
+      if (idle) { isIdleRef.current = true; return; }
+
       rafRef.current = requestAnimationFrame(tick);
     };
+
+    wakeRafRef.current = () => {
+      if (isIdleRef.current) {
+        isIdleRef.current = false;
+        lastFrame = performance.now();
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    isIdleRef.current = false;
     rafRef.current = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(rafRef.current); stopFM(); };
+    return () => { cancelAnimationFrame(rafRef.current); stopFM(); wakeRafRef.current = null; };
   }, [N, radius, step]);
 
   /* Pointer drag */
@@ -258,6 +289,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
 
     const onDown = (e: PointerEvent) => {
       stopFM();
+      wakeRafRef.current?.();
       draggingRef.current = true;
       isTouch = e.pointerType === 'touch';
       lastXRef.current = e.clientX;
@@ -303,6 +335,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0 }: Cylinder3DProps
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
         e.preventDefault();
         stopFM();
+        wakeRafRef.current?.();
         angleRef.current += e.deltaX * 0.0025;
         velocityRef.current = e.deltaX * 0.0025 * 0.6;
       }
@@ -394,7 +427,7 @@ function EmptyCategory({ headerH }: { headerH: number }) {
       opacity: 0,
     }}>
       <p style={{
-        fontFamily: 'Cinzel, serif',
+        fontFamily: 'var(--font-cinzel), serif',
         fontSize: 'clamp(12px, 1.6vw, 15px)',
         letterSpacing: '0.2em',
         color: 'rgba(255,255,255,.32)',
@@ -402,7 +435,7 @@ function EmptyCategory({ headerH }: { headerH: number }) {
         textAlign: 'center',
       }}>Em breve, novidades</p>
       <p style={{
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: 'var(--font-inter), sans-serif',
         fontSize: 10,
         letterSpacing: '0.24em',
         color: 'rgba(255,255,255,.16)',
@@ -438,18 +471,14 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
   const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('products').select('*').eq('available', true).order('display_order'),
-      supabase.from('categories').select('name').order('display_order'),
-    ]).then(([{ data: pData }, { data: cData }]) => {
-      if (pData && pData.length > 0) setDbPieces(pData.map((p: Record<string, unknown>) => ({
+    fetchCatalogData().then(({ pieces: pData, cats: cData }) => {
+      if (pData.length > 0) setDbPieces(pData.map((p) => ({
         id: p.id as string, name: p.name as string, shape: (p.shape as string) || 'ring',
         price: p.price as string, category: p.category as string, desc: p.description as string,
         image_url: (p.image_url as string) || '',
         video_url: (p.video_url as string) || '',
       })));
-      if (cData && cData.length > 0)
-        setDbCats(['Todos', ...(cData as Record<string, string>[]).map(c => c.name)]);
+      if (cData.length > 0) setDbCats(['Todos', ...cData]);
       setLoading(false);
     });
   }, []);
@@ -577,7 +606,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
       <div ref={bgRef} style={{
         position: 'absolute',
         top: -40, left: -40, right: -40, bottom: -40,
-        backgroundImage: 'url(/bg-catalog.png)',
+        backgroundImage: 'url(/bg-catalog.webp)',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         opacity: 0,
@@ -621,7 +650,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
         </div>
       )}
       {!loading && filteredPieces.length > 0 && (
-        <Cylinder3D key={filterCat} pieces={filteredPieces} onSelect={setSelected} tweaks={tweaks} topOffset={Math.round(headerH / 2)} />
+        <Cylinder3D pieces={filteredPieces} onSelect={setSelected} tweaks={tweaks} topOffset={Math.round(headerH / 2)} filterKey={filterCat} />
       )}
       {!loading && filteredPieces.length === 0 && (
         <EmptyCategory headerH={headerH} />
@@ -654,7 +683,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
                   background: active ? 'linear-gradient(180deg, #b3b6bb 0%, #5a5e66 38%, #2a2d33 58%, #5a5e66 78%, #b6b9be 100%)' : 'transparent',
                   border: active ? 'none' : '1px solid rgba(255,255,255,.18)',
                   color: active ? '#fff' : 'rgba(255,255,255,.45)',
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'var(--font-inter), sans-serif',
                   fontSize: 9.5,
                   letterSpacing: '0.3em',
                   textTransform: 'uppercase',
@@ -716,12 +745,13 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
             }}>×</button>
 
             <div
+              className="overlay-card__image"
               style={{ position: 'relative', overflow: 'hidden', cursor: selected.video_url ? 'pointer' : 'default' }}
               onMouseEnter={() => { if (selected.video_url) setVideoHover(true); }}
               onMouseLeave={() => setVideoHover(false)}
             >
               {selected.image_url
-                ? <img src={selected.image_url} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }} />
+                ? <Image src={selected.image_url} alt={selected.name} fill sizes="(max-width: 767px) calc(100vw - 64px), 360px" style={{ objectFit: 'cover', objectPosition: 'center' }} />
                 : <JewelryPlaceholder piece={selected} depth={1} />
               }
               {selected.video_url && (
@@ -740,7 +770,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
                   position: 'absolute', bottom: 12, right: 12,
                   background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)',
                   padding: '4px 12px', borderRadius: 20,
-                  fontFamily: 'Inter, sans-serif', fontSize: 9.5, letterSpacing: '0.22em',
+                  fontFamily: 'var(--font-inter), sans-serif', fontSize: 9.5, letterSpacing: '0.22em',
                   textTransform: 'uppercase', color: 'rgba(255,255,255,.7)',
                   pointerEvents: 'none',
                 }}>
@@ -749,7 +779,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div className="overlay-card__info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <span className="label" style={{ color: 'rgba(255,255,255,.5)', marginBottom: 10 }}>{selected.category}</span>
               <h3 className="ff-display" style={{
                 fontSize: 'clamp(20px, 3vw, 32px)', fontWeight: 500, letterSpacing: '0.04em', marginBottom: 10,
@@ -775,7 +805,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
 
       {/* Modal WhatsApp */}
       {selected && showWA && (() => {
-        const _msg = 'Olá! Gostaria de saber mais informações sobre o(a) ' + selected.name + '. Poderia me passar mais detalhes?\n\nhttps://joiasaurya.com.br';
+        const _msg = 'Olá! Gostaria de saber mais informações sobre o(a) ' + selected.name + '. Poderia me passar mais detalhes?';
         const _url = 'https://wa.me/5546999013150?text=' + encodeURIComponent(_msg);
         return (
           <div onClick={() => setShowWA(false)} style={{
@@ -808,12 +838,12 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
                   flex: 1, padding: '13px 16px',
                   background: 'transparent', border: '1px solid rgba(255,255,255,.15)',
                   color: 'rgba(255,255,255,.5)', cursor: 'pointer',
-                  fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '0.26em', textTransform: 'uppercase',
+                  fontFamily: 'var(--font-inter), sans-serif', fontSize: 11, letterSpacing: '0.26em', textTransform: 'uppercase',
                 }}>Cancelar</button>
                 <a href={_url} target="_blank" rel="noopener noreferrer" style={{
                   flex: 2, padding: '13px 16px',
                   background: '#25D366', color: '#fff',
-                  fontFamily: 'Inter, sans-serif', fontSize: 11, letterSpacing: '0.26em', textTransform: 'uppercase',
+                  fontFamily: 'var(--font-inter), sans-serif', fontSize: 11, letterSpacing: '0.26em', textTransform: 'uppercase',
                   textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   cursor: 'pointer',
                 }}>Iniciar no WhatsApp</a>
