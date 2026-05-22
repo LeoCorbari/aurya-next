@@ -35,6 +35,21 @@ export function AppRouter() {
     );
   }, [t.metalTone]);
 
+  // Dark-stage management lives here so it's always synced with `view`,
+  // even if CatalogView's cleanup doesn't fire (e.g. Brave mobile throttling).
+  useEffect(() => {
+    const dark = view === 'catalog';
+    document.body.classList.toggle('dark-stage', dark);
+    document.documentElement.classList.toggle('dark-stage-root', dark);
+    if (dark) {
+      document.documentElement.style.background = '#0d0f13';
+      document.body.style.background = '#0d0f13';
+    } else {
+      document.documentElement.style.removeProperty('background');
+      document.body.style.removeProperty('background');
+    }
+  }, [view]);
+
   const navigate = (next: string, target: string | null = null) => {
     if (next === view) {
       if (next === 'home' && target) {
@@ -73,7 +88,9 @@ export function AppRouter() {
         zIndex: 200,
       }} />
 
-      {/* Safe area overlays */}
+      {/* Safe area overlays — only active during catalog (dark stage).
+          zIndex 60: above TopNav (50) but below crossfade veil (200) so
+          the veil properly masks any color change during navigation. */}
       {(['top', 'bottom'] as const).map(pos => (
         <div key={pos} style={{
           position: 'fixed',
@@ -83,13 +100,10 @@ export function AppRouter() {
           height: pos === 'top'
             ? 'env(safe-area-inset-top, 0px)'
             : 'env(safe-area-inset-bottom, 0px)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          background: view === 'catalog'
-            ? 'rgba(10,11,14,0.5)'
-            : 'rgba(233,232,227,0.5)',
-          transition: 'background .4s ease',
-          zIndex: 9998,
+          backdropFilter: view === 'catalog' ? 'blur(24px)' : 'none',
+          WebkitBackdropFilter: view === 'catalog' ? 'blur(24px)' : 'none',
+          background: view === 'catalog' ? 'rgba(10,11,14,0.5)' : 'transparent',
+          zIndex: 60,
           pointerEvents: 'none',
         } as React.CSSProperties} />
       ))}

@@ -315,11 +315,11 @@ function NewsletterSection() {
                  style={{ border: '1px solid var(--ink-3)', background: 'rgba(255,255,255,.4)', backdropFilter: 'blur(6px)' }}>
               <input type="email" required placeholder="seu melhor e-mail"
                      value={email} onChange={(e) => setEmail(e.target.value)}
-                     className="ff-serif flex-1 bg-transparent border-none outline-none italic"
+                     className="ff-serif flex-1 min-w-0 bg-transparent border-none outline-none italic"
                      style={{ padding: 'clamp(14px, 2vw, 20px) clamp(14px, 2vw, 24px)', fontSize: 16, color: 'var(--ink-0)' }} />
               <button type="submit" disabled={loading}
-                      className="ff-sans uppercase tracking-[0.32em] text-[11px] text-white border-none cursor-pointer shrink-0"
-                      style={{ padding: '0 clamp(18px, 3vw, 32px)', background: 'var(--metal-grad)', opacity: loading ? 0.7 : 1 }}>
+                      className="ff-sans uppercase tracking-[0.16em] text-[11px] text-white border-none cursor-pointer shrink-0"
+                      style={{ padding: '0 clamp(14px, 3vw, 28px)', background: 'var(--metal-grad)', opacity: loading ? 0.7 : 1 }}>
                 {loading ? '...' : 'Inscrever'}
               </button>
             </div>

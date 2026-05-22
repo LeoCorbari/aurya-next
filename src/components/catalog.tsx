@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, startTransition } from 'react';
 import Image from 'next/image';
 import { animate } from 'framer-motion';
 import gsap from 'gsap';
@@ -55,9 +55,10 @@ interface CylinderCardProps {
   piece: PieceData;
   index: number;
   active: boolean;
+  isNear: boolean;
 }
 
-function CylinderCard({ piece, index, active }: CylinderCardProps) {
+function CylinderCard({ piece, index, active, isNear }: CylinderCardProps) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const [showVideo, setShowVideo] = useState(false);
 
@@ -94,8 +95,9 @@ function CylinderCard({ piece, index, active }: CylinderCardProps) {
           ? <Image src={piece.image_url} alt={piece.name} fill sizes="260px" loading={active ? 'eager' : 'lazy'} style={{ objectFit: 'cover', objectPosition: 'center' }} />
           : <JewelryPlaceholder piece={piece} depth={active ? 1 : 0.78} />
         }
-        {piece.video_url && active && (
+        {piece.video_url && (active || isNear) && (
           <video ref={videoRef} src={piece.video_url} muted loop playsInline
+            preload={active ? 'auto' : 'metadata'}
             style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%',
@@ -242,7 +244,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
       const realIdx = (((Math.round(-norm / step)) % N) + N) % N;
       if (realIdx !== activeIdxRef.current) {
         activeIdxRef.current = realIdx;
-        setActiveIdx(realIdx);
+        startTransition(() => setActiveIdx(realIdx));
       }
 
       if (innerRef.current) {
@@ -253,11 +255,12 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
           const k = kids[i] as HTMLElement;
           if (cos < -0.05) {
             k.style.opacity = '0';
-            k.style.pointerEvents = 'none';
+            if (k.style.pointerEvents !== 'none') k.style.pointerEvents = 'none';
           } else {
             const o = Math.max(0, Math.min(1, 0.55 + cos * 0.45));
             k.style.opacity = String(o);
-            k.style.pointerEvents = cos > 0.85 ? 'auto' : 'none';
+            const pe = cos > 0.85 ? 'auto' : 'none';
+            if (k.style.pointerEvents !== pe) k.style.pointerEvents = pe;
           }
         }
       }
@@ -399,8 +402,10 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
               transform: `rotateY(${a}rad) translateZ(${radius}px)`,
               transformStyle: 'preserve-3d',
               backfaceVisibility: 'hidden',
+              willChange: 'transform, opacity',
             }}>
-              <CylinderCard piece={p} index={i} active={activeIdx === i} />
+              <CylinderCard piece={p} index={i} active={activeIdx === i}
+                isNear={i === (activeIdx - 1 + N) % N || i === (activeIdx + 1) % N} />
             </div>
           );
         })}
@@ -511,19 +516,7 @@ export function CatalogView({ tweaks }: CatalogViewProps) {
     row.scrollTo({ left: scrollLeft, behavior: 'smooth' });
   }, [filterCat]);
 
-  /* Dark stage body classes */
-  useEffect(() => {
-    document.body.classList.add('dark-stage');
-    document.documentElement.classList.add('dark-stage-root');
-    document.documentElement.style.background = '#0d0f13';
-    document.body.style.background = '#0d0f13';
-    return () => {
-      document.body.classList.remove('dark-stage');
-      document.documentElement.classList.remove('dark-stage-root');
-      document.documentElement.style.background = '';
-      document.body.style.background = '';
-    };
-  }, []);
+  /* Dark stage is managed by AppRouter — no local effect needed here */
 
   /* Mouse parallax */
   useEffect(() => {
