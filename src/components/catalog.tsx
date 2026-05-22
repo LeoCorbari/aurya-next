@@ -92,7 +92,7 @@ function CylinderCard({ piece, index, active, isNear }: CylinderCardProps) {
     }}>
       <div style={{ flex: '1 1 auto', position: 'relative', margin: 14, marginBottom: 0, overflow: 'hidden' }}>
         {piece.image_url
-          ? <Image src={piece.image_url} alt={piece.name} fill sizes="260px" loading={active ? 'eager' : 'lazy'} style={{ objectFit: 'cover', objectPosition: 'center' }} />
+          ? <Image src={piece.image_url} alt={piece.name} fill sizes="260px" draggable={false} loading={active ? 'eager' : 'lazy'} style={{ objectFit: 'cover', objectPosition: 'center' }} />
           : <JewelryPlaceholder piece={piece} depth={active ? 1 : 0.78} />
         }
         {piece.video_url && (active || isNear) && (
@@ -259,7 +259,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
           } else {
             const o = Math.max(0, Math.min(1, 0.55 + cos * 0.45));
             k.style.opacity = String(o);
-            const pe = cos > 0.85 ? 'auto' : 'none';
+            const pe = cos > 0 ? 'auto' : 'none';
             if (k.style.pointerEvents !== pe) k.style.pointerEvents = pe;
           }
         }
@@ -325,7 +325,18 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
       const totalDy = Math.abs(e.clientY - downY);
       if (totalDx < 10 && totalDy < 10) {
         const clickedCard = downTarget && (downTarget as HTMLElement).closest('[data-cyl-card]');
-        if (clickedCard && onSelectRef.current) onSelectRef.current(pieces[activeIdxRef.current]);
+        if (clickedCard) {
+          const idx = Number((clickedCard as HTMLElement).getAttribute('data-idx'));
+          if (idx === activeIdxRef.current) {
+            if (onSelectRef.current) onSelectRef.current(pieces[activeIdxRef.current]);
+          } else {
+            const currentUnit = Math.round(-angleRef.current / step);
+            const curNorm = ((currentUnit % N) + N) % N;
+            let delta = ((idx - curNorm) % N + N) % N;
+            if (delta > N / 2) delta -= N;
+            springTo(-(currentUnit + delta) * step);
+          }
+        }
         return;
       }
 
@@ -373,7 +384,7 @@ function Cylinder3D({ pieces, onSelect, tweaks, topOffset = 0, filterKey }: Cyli
   }, [N, step]);
 
   return (
-    <div ref={stageRef} style={{
+    <div ref={stageRef} onDragStart={(e) => e.preventDefault()} style={{
       position: 'absolute', inset: 0,
       perspective: '1400px',
       perspectiveOrigin: '50% 50%',
